@@ -1,10 +1,85 @@
-#!/usr/bin/env python3 -i
+#!/usr/bin/env python
 
 import argparse
 import re
 import sys
 import requests
 import bs4
+
+class Downloader:
+    def __init__(self, args):
+        self.args = args
+        self.session = requests.Session()
+        self.titles = {}
+
+    def login(self):
+        # Log in to the server
+        if True:
+            if self.args.verbose:
+                sys.stderr.write('Logging into server...\n')
+
+            # Access top page in order to get the cookies.
+            r = self.session.get('http://bigfinish.com')
+
+            r = self.session.post('http://bigfinish.com/customers/login',
+                              data={'_method' :'POST',
+                                    'data[post_action]': 'login',
+                                    'data[Customer][email_address]': self.args.user,
+                                    'data[Customer][password]': self.args.password,
+                                    'data[remember_me]': '1'},
+                          )
+
+    def read_library(self):
+        # Read the complete library page
+        if self.args.verbose:
+            print('Retrieving complete library...')
+        if True:
+            r = self.session.get('http://bigfinish.com/customers/my_account/perpage:0')
+            html = r.text
+            open('bf-download-new.html', 'w').write(html)
+        else:
+            html = open('bf-download-new.html', 'rb').read()
+
+        # Parse the HTML.
+        if self.args.verbose:
+            sys.stderr.write('Parsing library...\n')
+
+        html_parser = bs4.BeautifulSoup(html)
+
+        def extract_info(img):
+            # Link to download the file
+            href = img.parent['href']
+            if not href.startswith('http'):
+                href = 'http://bigfinish.com' + href
+
+            # Title for this file
+            product_entry = img.parent.parent.parent
+            title = product_entry.select('a.largePopOut > img')[0]['alt']
+            return (title, href)
+
+        mp3_images = html_parser.find_all('img', attrs={
+            'src': re.compile('button-account-downloadmp3.png$')})
+        audiobook_images = html_parser.find_all('img', attrs={
+            'src': re.compile('button-account-downloadaudiobook.png$')})
+
+        for img in mp3_images:
+            title, href = extract_info(img)
+            d = self.titles.setdefault(title, {})
+            d['mp3'] = href
+
+        for img in audiobook_images:
+            title, href = extract_info(img)
+            d = self.titles.setdefault(title, {})
+            d['audiobook'] = href
+
+        if self.args.verbose:
+            sys.stderr.write('%i titles in library\n' % len(self.titles))
+
+        # Check for actual file name of titles
+        return html_parser
+
+    def download_audio(self):
+        pass
 
 def main():
     parser = argparse.ArgumentParser(
@@ -27,66 +102,10 @@ def main():
                         help='produce more logging output')
     args = parser.parse_args()
 
-    # Log in to the server
-    if False:
-        if args.verbose:
-            print('Logging into server...', file=sys.stderr)
-
-        # Access top page in order to get the cookies.
-        r = requests.get('http://www.bigfinish.com')
-        cookie_jar = r.cookies
-
-        r = requests.post('http://www.bigfinish.com/customers/login',
-                          cookies=cookie_jar,
-                          data={'_method' :'POST',
-                                'data[Customer][email_address]': args.user,
-                                'data[Customer][password]': args.password,
-                                'data[remember_me]': '1'},
-                      )
-
-    # Read the complete library page
-    if args.verbose:
-        print('Retrieving complete library...')
-    if False:
-        r = requests.get('http://bigfinish.com/customers/my_account/perpage:0',
-                          cookies=cookie_jar)
-        html = r.content
-    else:
-        html = open('bf-download.html', 'rb').read()
-
-    # Parse the HTML.
-    if args.verbose:
-        print('Parsing library...', file=sys.stderr)
-
-    html_parser = bs4.BeautifulSoup(html)
-
-    def extract_info(img):
-        # Link to download the file
-        href = img.parent['href']
-
-        # Title for this file
-        product_entry = img.parent.parent.parent
-        title = product_entry.find('a', attrs={'class':'largePopOut'}).text
-
-        return (title, href)
-
-    mp3_images = hp.find_all('img', attrs={
-        'src': re.compile('button-account-downloadmp3.png$')})
-    audiobook_images = hp.find_all('img', attrs={
-        'src': re.compile('button-account-downloadaudiobook.png$')})
-
-    mp3_hrefs = [extract_info(img) for img in mp3_images]
-    audiobook_hrefs = [extract_info(img) for img in audiobook_images]
-
-    all_titles = set(title for (title, href) in mp3_hrefs + audiobook_hrefs)
-
-    if verbose:
-        print(len(all_titles), 'in library', file=sys.stderr)
-
-    # Check for actual file name of titles
-
-
-    return html_parser
+    dl = Downloader(args)
+    dl.login()
+    dl.read_library()
+    dl.download_audio()
 
 if __name__ == '__main__':
     hp = main()
