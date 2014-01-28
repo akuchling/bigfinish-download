@@ -1,5 +1,17 @@
 *.py[cod]
 
+# Files produced by downloading
+*.zip
+*.mp3
+*.m4a
+.library.html
+.library.json
+
+# Editor backups
+*~
+\#*\#
+.\#*
+
 # C extensions
 *.so
 
