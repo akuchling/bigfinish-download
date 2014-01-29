@@ -6,6 +6,11 @@ local directory of audio files.  This is done efficiently without
 redundant downloading, to save both your network bandwidth and Big
 Finish's servers.
 
+.. note::
+
+  This script is entirely unofficial.  No association with Big Finish
+  Productions is claimed.
+
 
 Usage
 =====
