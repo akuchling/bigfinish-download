@@ -51,8 +51,11 @@ class Downloader:
         if not self.args.dry_run:
             if self.args.verbose:
                 print('Retrieving complete library...')
+
+            # This URL contains the user's library on a single page.
             r = self.session.get('http://bigfinish.com/customers/my_account/perpage:0')
             html = r.text
+            # Save a copy of the HTML for --dry-run to use.
             open(html_file, 'w').write(html)
         else:
             html = open(html_file, 'r').read()
@@ -74,6 +77,7 @@ class Downloader:
             title = product_entry.select('a.largePopOut > img')[0]['alt']
             return (title, href)
 
+        # Look for the images for the download buttons.
         mp3_images = html_parser.find_all('img', attrs={
             'src': re.compile('button-account-downloadmp3.png$')})
         audiobook_images = html_parser.find_all('img', attrs={
