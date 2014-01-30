@@ -5,16 +5,43 @@ import re
 import sys
 import os
 import json
+import zipfile
 import requests
 import bs4
 
+def slugify(title):
+    "Convert a title into a slug version suitable for use as a directory name"
+    title = title.lower()
+    title = re.sub('\s+', '-', title)
+    title = re.sub('[^-a-z0-9]+', '', title)
+    title = title.strip('-')
+    return title
+
+
+def select_format(title, args, d):
+    """Given a dictionary 'd', figure out which format we'll use and
+    return the url and key holding the filename.
+    """
+    url = None
+    for format in (args.prefer_format, 'mp3', 'audiobook'):
+        if format in d:
+            url = d[format]
+            filename_key = format + '_filename'
+            break
+
+    # Unceremoniously fail if we couldn't figure out a URL.
+    assert url is not None, 'No URL found for {0}'.format(title)
+    return format, filename_key, url
+
 class Downloader:
+
     def __init__(self, args):
         self.args = args
         self.session = requests.Session()
         self.titles = {}
 
     def read_persistent_data(self):
+        "Read contents of .titles from a JSON file"
         json_file = os.path.join(self.args.dir, '.library.json')
         if os.path.exists(json_file):
             with open(json_file, 'r') as f:
@@ -24,19 +51,21 @@ class Downloader:
                 self.titles.update(d)
 
     def write_persistent_data(self):
+        "Write the .titles dictionary to a JSON file"
         json_file = os.path.join(self.args.dir, '.library.json')
         with open(json_file, 'w') as f:
             json.dump(self.titles, f, indent='  ')
 
     def login(self):
-        # Log in to the server
+        "Log in to the server with the user's ID and password."
         if not self.args.dry_run:
             if self.args.verbose:
                 sys.stderr.write('Logging into server...\n')
 
-            # Access top page in order to get the cookies.
+            # Access top page in order to get the cookies set up.
             r = self.session.get('http://bigfinish.com')
 
+            # Post to the login form.
             r = self.session.post('http://bigfinish.com/customers/login',
                               data={'_method' :'POST',
                                     'data[post_action]': 'login',
@@ -46,7 +75,7 @@ class Downloader:
                           )
 
     def read_purchased_library(self):
-        # Read the complete library page
+        "Read and parse the complete library page for the user."
         html_file = os.path.join(self.args.dir, '.library.html')
         if not self.args.dry_run:
             if self.args.verbose:
@@ -109,14 +138,7 @@ class Downloader:
         want to download.
         """
         for k, d in sorted(self.titles.items()):
-            url = None
-            for format in (self.args.prefer_format, 'mp3', 'audiobook'):
-                if format in d:
-                    url = d[format]
-                    filename_key = format + '_filename'
-                    break
-
-            assert url is not None, 'No URL found for {0}'.format(k)
+            format, filename_key, url = select_format(k, self.args, d)
 
             # Do we already know the filename?
             if d[filename_key]:
@@ -124,7 +146,7 @@ class Downloader:
 
             # Not present, so do an HTTP HEAD to get the filename.
             if self.args.verbose:
-                print('Determining filename for {!r}'.format(k))
+                print('Determining download filename for {!r}'.format(k))
             if self.args.dry_run:
                 continue
             req = self.session.head(url)
@@ -136,23 +158,20 @@ class Downloader:
             if self.args.verbose:
                 print('  ... will download filename {!r}'.format(filename))
 
+    #
+    # Methods after this point shouldn't modify the .titles
+    # dictionary, because it will have already been written out to
+    # disk at this point.
+    #
+
     def download_audio(self):
-        "Download audio zip files"
-        # This method shouldn't modify the .titles dictionary, because it
-        # will have already been written out to disk at this point.
+        "Download audio files and archives"
         for k, d in sorted(self.titles.items()):
-            url = None
-            for format in (self.args.prefer_format, 'mp3', 'audiobook'):
-                if format in d:
-                    url = d[format]
-                    filename_key = format + '_filename'
-                    filename = d[filename_key]
-                    break
-
-            assert url is not None, 'No URL found for {0}'.format(k)
-
+            format, filename_key, url = select_format(k, self.args, d)
+            filename = d[filename_key]
             path = os.path.join(self.args.dir, filename)
             if os.path.exists(path):
+                # Already downloaded, so skip it
                 continue
 
             if self.args.verbose:
@@ -179,6 +198,50 @@ class Downloader:
                 print('Interrupted: removing {}'.format(path))
                 os.remove(path)
                 raise
+
+    def unpack_zip_archives(self):
+        "Unpack any downloads that were .zip archives"
+        orig_dir = os.getcwd()
+        try:
+            os.chdir(self.args.dir)
+            for k, d in sorted(self.titles.items()):
+                format, filename_key, url = select_format(k, self.args, d)
+                filename = d[filename_key]
+
+                # Skip non-zip files
+                if not filename.endswith('.zip'):
+                    continue
+                if not zipfile.is_zipfile(filename):
+                    continue
+
+                if self.args.verbose:
+                    print('Unpacking archive {}'.format(filename))
+                zpf = zipfile.ZipFile(filename, 'r')
+                for name in zpf.namelist():
+                    if name.startswith('__MACOSX'):
+                        continue
+                    if name.endswith('.DS_Store'):
+                        continue
+
+                    if '/' not in name:
+                        # This zip doesn't seem to put its files in a subdirectory,
+                        # so we'll create a directory and use it.
+                        title_dir = slugify(k)
+                        if not os.path.exists(title_dir):
+                            os.mkdir(title_dir)
+
+                        if self.args.verbose:
+                            print('  {}/{}'.format(title_dir,
+                                                   os.path.basename(name)))
+                        zpf.extract(name, title_dir)
+                    else:
+                        if self.args.verbose:
+                            print('  {}'.format(name))
+                        zpf.extract(name)
+                zpf.close()
+        finally:
+            # Restore original working directory.
+            os.chdir(orig_dir)
 
 
 def main():
@@ -213,6 +276,7 @@ def main():
     dl.determine_filenames()
     dl.write_persistent_data()
     dl.download_audio()
+    dl.unpack_zip_archives()
     return dl
 
 
