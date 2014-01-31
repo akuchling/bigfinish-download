@@ -230,11 +230,20 @@ class Downloader:
                         if not os.path.exists(title_dir):
                             os.mkdir(title_dir)
 
+                        # If file already exists, don't extract it.
+                        result_path = os.path.join(title_dir, name)
+                        if os.path.exists(result_path):
+                            continue
+
                         if self.args.verbose:
                             print('  {}/{}'.format(title_dir,
                                                    os.path.basename(name)))
                         zpf.extract(name, title_dir)
                     else:
+                        # If file already exists, don't extract it.
+                        if os.path.exists(name):
+                            continue
+
                         if self.args.verbose:
                             print('  {}'.format(name))
                         zpf.extract(name)
