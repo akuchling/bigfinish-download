@@ -216,38 +216,37 @@ class Downloader:
 
                 if self.args.verbose:
                     print('Unpacking archive {}'.format(filename))
-                zpf = zipfile.ZipFile(filename, 'r')
-                for name in zpf.namelist():
-                    if name.startswith('__MACOSX'):
-                        continue
-                    if name.endswith('.DS_Store'):
-                        continue
-
-                    if '/' not in name:
-                        # This zip doesn't seem to put its files in a subdirectory,
-                        # so we'll create a directory and use it.
-                        title_dir = slugify(k)
-                        if not os.path.exists(title_dir):
-                            os.mkdir(title_dir)
-
-                        # If file already exists, don't extract it.
-                        result_path = os.path.join(title_dir, name)
-                        if os.path.exists(result_path):
+                with zipfile.ZipFile(filename, 'r') as zpf:
+                    for name in zpf.namelist():
+                        if name.startswith('__MACOSX'):
+                            continue
+                        if name.endswith('.DS_Store'):
                             continue
 
-                        if self.args.verbose:
-                            print('  {}/{}'.format(title_dir,
-                                                   os.path.basename(name)))
-                        zpf.extract(name, title_dir)
-                    else:
-                        # If file already exists, don't extract it.
-                        if os.path.exists(name):
-                            continue
+                        if '/' not in name:
+                            # This zip doesn't seem to put its files in a subdirectory,
+                            # so we'll create a directory and use it.
+                            title_dir = slugify(k)
+                            if not os.path.exists(title_dir):
+                                os.mkdir(title_dir)
 
-                        if self.args.verbose:
-                            print('  {}'.format(name))
-                        zpf.extract(name)
-                zpf.close()
+                            # If file already exists, don't extract it.
+                            result_path = os.path.join(title_dir, name)
+                            if os.path.exists(result_path):
+                                continue
+
+                            if self.args.verbose:
+                                print('  {}/{}'.format(title_dir,
+                                                       os.path.basename(name)))
+                            zpf.extract(name, title_dir)
+                        else:
+                            # If file already exists, don't extract it.
+                            if os.path.exists(name):
+                                continue
+
+                            if self.args.verbose:
+                                print('  {}'.format(name))
+                            zpf.extract(name)
         finally:
             # Restore original working directory.
             os.chdir(orig_dir)
