@@ -183,20 +183,22 @@ class Downloader:
             # Download the archive
             # XXX it would be politer to save a partially-downloaded
             # file and then resume it.
+            input = self.session.get(url, stream=True)
+            # XXX could check that the length matches afterwards
+            ##length = int(input.headers['Content-Length'])
             try:
-                input = self.session.get(url, stream=True)
-                # XXX could check that the length matches afterwards
-                length = int(input.headers['Content-Length'])
                 with open(path, 'wb') as output:
                     for chunk in input.iter_content(4096):
                         output.write(chunk)
             except Exception:
                 print('Error: removing {}'.format(path))
-                os.remove(path)
+                if os.path.exists(path):
+                    os.remove(path)
                 raise
             except KeyboardInterrupt:
                 print('Interrupted: removing {}'.format(path))
-                os.remove(path)
+                if os.path.exists(path):
+                    os.remove(path)
                 raise
 
     def unpack_zip_archives(self):
