@@ -63,10 +63,10 @@ class Downloader:
                 sys.stderr.write('Logging into server...\n')
 
             # Access top page in order to get the cookies set up.
-            r = self.session.get('http://bigfinish.com')
+            r = self.session.get('https://www.bigfinish.com')
 
             # Post to the login form.
-            r = self.session.post('http://bigfinish.com/customers/login',
+            r = self.session.post('https://www.bigfinish.com/customers/login',
                               data={'_method' :'POST',
                                     'data[post_action]': 'login',
                                     'data[Customer][email_address]': self.args.user,
@@ -82,7 +82,7 @@ class Downloader:
                 print('Retrieving complete library...')
 
             # This URL contains the user's library on a single page.
-            r = self.session.get('http://bigfinish.com/customers/my_account/perpage:0')
+            r = self.session.get('https://www.bigfinish.com/customers/my_account/perpage:0')
             html = r.text
             # Save a copy of the HTML for --dry-run to use.
             open(html_file, 'w').write(html)
@@ -99,28 +99,22 @@ class Downloader:
             # Link to download the file
             href = img.parent['href']
             if not href.startswith('http'):
-                href = 'http://bigfinish.com' + href
+                href = 'https://www.bigfinish.com' + href
 
             # Title for this file
             product_entry = img.parent.parent.parent
             title = product_entry.select('a.largePopOut > img')[0]['alt']
             return (title, href)
 
-        # Look for the images for the download buttons.
-        mp3_images = html_parser.find_all('img', attrs={
-            'src': re.compile('button-account-downloadmp3.png$')})
-        audiobook_images = html_parser.find_all('img', attrs={
-            'src': re.compile('button-account-downloadaudiobook.png$')})
+        releases = html_parser.select('.account-release-download')
 
-        for img in mp3_images:
-            title, href = extract_info(img)
+        for release in releases:
+            title = release.select_one('h2').text.strip()
+            mp3 = 'https://www.bigfinish.com' + release.select_one('.desktop-downloads a:not([href$="audiobook"])')['href']
+            audiobook = 'https://www.bigfinish.com' + release.select_one('.desktop-downloads a[href$="audiobook"]')['href']
             d = self.titles.setdefault(title, {})
-            d['mp3'] = href
-
-        for img in audiobook_images:
-            title, href = extract_info(img)
-            d = self.titles.setdefault(title, {})
-            d['audiobook'] = href
+            d['mp3'] = mp3
+            d['audiobook'] = audiobook
 
         if self.args.verbose:
             sys.stderr.write('%i titles in library\n' % len(self.titles))
